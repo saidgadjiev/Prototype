@@ -1,5 +1,7 @@
 package ru.saidgadjiev.prototype.request.lexer;
 
+import ru.saidgadjiev.prototype.request.parser.HttpRequestParser;
+
 /**
  * Created by said on 12.09.2018.
  */
@@ -13,8 +15,6 @@ public class HttpRequestLexer {
 
     private char ch;
 
-    private State state = State.METHOD;
-
     public HttpRequestLexer(String input) {
         this.input = input;
 
@@ -23,131 +23,52 @@ public class HttpRequestLexer {
 
     public Token nextToken() {
         while (ch != EOF) {
-            switch (state) {
-                case METHOD: {
-                    state = State.URI;
-
-                    Token result = method();
-
-                    //Поглащаем ' '
+            switch (ch) {
+                case ' ':
                     consume();
 
-                    return result;
-                }
-                case URI: {
-                    state = State.HTTP_VERSION;
-
-                    Token result = uri();
-
-                    //Поглащаем ' '
+                    return new Token(" ", Token.TokenType.SPACE);
+                case '\r':
                     consume();
 
-                    return result;
-                }
-                case HTTP_VERSION: {
-                    Token result = httpVersion();
-
-                    //Поглащаем \n
-                    consume();
-                    //Следующий символ
+                    return new Token("\r", Token.TokenType.CARRIAGE_RETURN);
+                case '\n':
                     consume();
 
-                    //Если следующий символ возврат коретки значит мы дошли до body. Иначе header.
-                    if (ch == '\r') {
-                        //Поглащаем \n
-                        //Следующий символ
-                        consume();
-                        consume();
-
-                        state = State.BODY;
-                    } else {
-                        state = State.HEADER;
-                    }
-
-                    return result;
-                }
-                case HEADER: {
-                    Token result = header();
-
-                    //Поглащаем \n
-                    consume();
-                    //Следующий символ
+                    return new Token("\n", Token.TokenType.NEW_LINE);
+                case ':':
                     consume();
 
-                    //Если следующий символ возврат коретки значит мы дошли до body. Иначе остаемся на header.
-                    if (ch == '\r') {
-                        //Поглащаем \n
-                        consume();
-                        //Следующий символ
-                        consume();
+                    return new Token(":", Token.TokenType.COLON);
+                case '?':
+                    consume();
 
-                        state = State.BODY;
-                    }
+                    return new Token("?", Token.TokenType.QUESTION_MARK);
+                case '&':
+                    consume();
 
-                    return result;
-                }
-                case BODY: {
-                    return body();
-                }
+                    return new Token("&", Token.TokenType.AMPERSAND);
+                case '=':
+                    consume();
+
+                    return new Token("=", Token.TokenType.EQ);
+                default:
+                    return word();
             }
         }
 
         return new Token("</EOF>", Token.TokenType.EOF);
     }
 
-    private Token method() {
+    private Token word() {
         StringBuilder builder = new StringBuilder();
 
         do {
             builder.append(ch);
             consume();
-        } while (ch != ' ' && ch != EOF);
+        } while (!isDelimiter() && ch != EOF);
 
-        return new Token(builder.toString(), Token.TokenType.METHOD);
-    }
-
-    private Token uri() {
-        StringBuilder builder = new StringBuilder();
-
-        do {
-            builder.append(ch);
-            consume();
-        } while (ch != ' ' && ch != EOF);
-
-        return new Token(builder.toString(), Token.TokenType.URI);
-    }
-
-    private Token httpVersion() {
-        StringBuilder builder = new StringBuilder();
-
-        do {
-            builder.append(ch);
-            consume();
-        } while (ch != '\r' && ch != EOF);
-
-        return new Token(builder.toString(), Token.TokenType.HTTP_VERSION);
-    }
-
-    private Token header() {
-        StringBuilder builder = new StringBuilder();
-
-        do {
-            builder.append(ch);
-            consume();
-        } while (ch != '\r' && ch != EOF);
-
-        return new Token(builder.toString(), Token.TokenType.HEADER);
-    }
-
-    private Token body() {
-        StringBuilder builder = new StringBuilder();
-
-        do {
-            builder.append(ch);
-            consume();
-        } while (ch != EOF);
-
-        return new Token(builder.toString(), Token.TokenType.BODY);
+        return new Token(builder.toString(), Token.TokenType.WORD);
     }
 
     private void consume() {
@@ -160,23 +81,21 @@ public class HttpRequestLexer {
         }
     }
 
+    private boolean isDelimiter() {
+        return ch == ' ' || ch == '\r' || ch == '\n' || ch == ':' || ch == '?' || ch == '&' || ch == '=';
+    }
+
     public static void main(String[] args) {
-        String request = "GET /api/user HTTP/1.1\r\n" +
-                "User: said\r\n" +
-                "Framework: Prototype\r\n" +
+        String request = "GET /api/user?name=said&test=1 HTTP/1.1\r\n" +
+                "User name: said\r\n" +
+                "Web framework: Prototype\r\n" +
                 "\r\n" +
-                "test";
+                "test {a:5}";
 
         HttpRequestLexer lexer = new HttpRequestLexer(request);
 
-        Token token = lexer.nextToken();
+        HttpRequest request1 = new HttpRequestParser(lexer).parse();
 
-        while (token.getTokenType() != Token.TokenType.EOF) {
-            System.out.println(token);
-
-            token = lexer.nextToken();
-        }
-
-        System.out.println(token);
+        System.out.println(request1);
     }
 }

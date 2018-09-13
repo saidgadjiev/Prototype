@@ -1,15 +1,15 @@
 grammar http_request;
 
 http_request
-    : request_line header (header)*
+    : request_line '\r\n' (header)* (body)?
     ;
 
 request_line
-    : METHOD ' ' WORD ' ' HTTP_VERSION
+    : WORD
     ;
 
 header
-    : WORD ':' ' ' WORD
+    : WORD ':' WORD
     ;
 
 METHOD

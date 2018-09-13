@@ -32,15 +32,21 @@ public class Token {
 
     public enum TokenType {
 
-        METHOD,
+        SPACE,
 
-        URI,
+        WORD,
 
-        HTTP_VERSION,
+        CARRIAGE_RETURN,
 
-        HEADER,
+        NEW_LINE,
 
-        BODY,
+        COLON,
+
+        QUESTION_MARK,
+
+        AMPERSAND,
+
+        EQ,
 
         EOF
     }

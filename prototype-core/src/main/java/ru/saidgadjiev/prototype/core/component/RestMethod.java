@@ -1,15 +1,10 @@
 package ru.saidgadjiev.prototype.core.component;
 
-import com.google.gson.Gson;
-import ru.saidgadjiev.prototype.core.annotation.GET;
-import ru.saidgadjiev.prototype.core.annotation.POST;
-import ru.saidgadjiev.prototype.core.annotation.RequestBody;
-import ru.saidgadjiev.prototype.core.annotation.RequestParam;
-import ru.saidgadjiev.prototype.http.HttpRequest;
+import io.netty.handler.codec.http.*;
+import ru.saidgadjiev.prototype.core.annotation.ResponseBody;
+import ru.saidgadjiev.prototype.core.http.HttpResponse;
 
 import java.lang.reflect.Method;
-import java.lang.reflect.Parameter;
-import java.util.ArrayList;
 import java.util.Collection;
 
 /**
@@ -23,24 +18,26 @@ public class RestMethod {
 
     private final String uri;
 
-    private final HttpRequest.Method method;
+    private final HttpMethod method;
 
     private final Collection<RestParam> restParams;
 
-    public RestMethod(Method restMethod, Object restClassInstance) {
+    private final boolean isResponseBody;
+
+    public RestMethod(Method restMethod, Object restClassInstance, HttpMethod method, String uri, Collection<RestParam> restParams) {
         this.restMethod = restMethod;
         this.restClassInstance = restClassInstance;
-
-        uri = getMethodUri();
-        restParams = getRestParams();
-        method = getRestMethod();
+        this.uri = uri;
+        this.method = method;
+        this.restParams = restParams;
+        isResponseBody = restMethod.isAnnotationPresent(ResponseBody.class);
     }
 
     public String getUri() {
         return uri;
     }
 
-    public boolean probe(HttpRequest.Method method) {
+    public boolean probe(HttpMethod method) {
         return this.method == method;
     }
 
@@ -52,73 +49,61 @@ public class RestMethod {
         try {
             Object result = restMethod.invoke(restClassInstance, methodParams.toArray(new Object[methodParams.size()]));
 
-            return new RestResult() {
-                @Override
-                public Object toBody() {
-                    return String.valueOf(result);
-                }
+            if (result instanceof HttpResponse) {
+                return new RestResult(((HttpResponse) result).getStatus(), ((HttpResponse) result).getContent());
+            }
 
-                @Override
-                public int getLength() {
-                    return String.valueOf(result).length();
-                }
-            };
+            return new RestResult(HttpResponseStatus.OK, result);
         } catch (Exception ex) {
             throw new RuntimeException(ex);
         }
     }
 
-    private String getMethodUri() {
-        if (restMethod.isAnnotationPresent(GET.class)) {
-            GET get = restMethod.getAnnotation(GET.class);
-
-            return get.value();
-        }
-        if (restMethod.isAnnotationPresent(POST.class)) {
-            POST post = restMethod.getAnnotation(POST.class);
-
-            return post.value();
-        }
-
-        return null;
-    }
-
-    private HttpRequest.Method getRestMethod() {
-        if (restMethod.isAnnotationPresent(GET.class)) {
-            return HttpRequest.Method.GET;
-        }
-        if (restMethod.isAnnotationPresent(POST.class)) {
-            return HttpRequest.Method.POST;
-        }
-
-        return null;
-    }
-
-    private Collection<RestParam> getRestParams() {
-        Collection<RestParam> restParams = new ArrayList<>();
-
-        for (Parameter parameter : restMethod.getParameters()) {
-            if (parameter.isAnnotationPresent(RequestParam.class)) {
-                RequestParam requestParam = parameter.getAnnotation(RequestParam.class);
-
-                restParams.add(request -> request.getParam(requestParam.value()));
-            } else if (parameter.isAnnotationPresent(RequestBody.class)) {
-                restParams.add(request -> new Gson().fromJson(request.getBody(), parameter.getType()));
-            }
-        }
-
-        return restParams;
-    }
-
     public interface RestParam {
 
-        Object parse(HttpRequest request);
+        default RequiredResult checkRequired(HttpRequestContext context) {
+            return new RequiredResult(HttpResponseStatus.OK);
+        }
+
+        Object convert(HttpRequestContext requestContext);
     }
 
-    public interface RestResult {
+    public static class RequiredResult {
 
-        Object toBody();
+        private final HttpResponseStatus status;
 
-        int getLength();
+        RequiredResult(HttpResponseStatus status) {
+            this.status = status;
+        }
+
+        public HttpResponseStatus getStatus() {
+            return status;
+        }
+    }
+
+    public class RestResult {
+
+        private final HttpResponseStatus status;
+
+        private final Object content;
+
+        public RestResult(HttpResponseStatus status, Object content) {
+            this.status = status;
+            this.content = content;
+        }
+
+        public void toResponse(HttpResponseContext responseContext) {
+            if (isResponseBody) {
+                responseContext.setContent(responseContext.getGsonBuilder().create().toJson(content));
+            } else {
+                responseContext.setContent(String.valueOf(content));
+            }
+
+            responseContext.addHeader(HttpHeaderNames.CONTENT_TYPE, responseContext.getContent().length());
+        }
+
+        public HttpResponseStatus getStatus() {
+            return status;
+        }
     }
 }

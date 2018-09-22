@@ -12,26 +12,23 @@ import java.util.stream.Collectors;
  */
 public class ComponentScan {
 
-    public Collection<RestClass> scan(String restBasePackage) {
-        return getRestClasses(restBasePackage);
+    private final String basePackages;
+
+    private Set<Class<?>> restClasses;
+
+    public ComponentScan(String basePackages) {
+        this.basePackages = basePackages;
+
+        scan();
     }
 
-    private Collection<RestClass> getRestClasses(final String packageName) {
-        Reflections reflections = new Reflections(packageName);
+    private void scan() {
+        Reflections reflections = new Reflections(basePackages);
 
-        Set<Class<?>> restClasses = reflections.getTypesAnnotatedWith(REST.class);
-
-        return restClasses
-                .stream()
-                .map(aClass -> new RestClass(aClass, instantiate(aClass)))
-                .collect(Collectors.toList());
+        restClasses = reflections.getTypesAnnotatedWith(REST.class);
     }
 
-    private Object instantiate(Class<?> componentClass) {
-        try {
-            return componentClass.newInstance();
-        } catch (Exception ex) {
-            throw new RuntimeException(ex);
-        }
+    public Set<Class<?>> getRestClasses() {
+        return restClasses;
     }
 }

@@ -1,26 +1,29 @@
 package ru.saidgadjiev.prototype.core;
 
-import com.google.inject.Guice;
-import com.google.inject.Inject;
 import com.google.inject.Injector;
 import ru.saidgadjiev.prototype.core.server.PrototypeServer;
-import ru.saidgadjiev.prototype.core.test.TestModule;
+
+import java.util.Objects;
 
 /**
  * Created by said on 12.09.2018.
  */
 public class PrototypeStarter {
 
-    public static void main(String[] args) throws Exception {
-        PrototypeServer prototypeServer = new PrototypeServer(8080);
+    private final int port;
 
-        prototypeServer.setRestBasePackage("ru.saidgadjiev.prototype.core.test");
-        prototypeServer.setInjector(createInjector());
-
-        prototypeServer.run();
+    public PrototypeStarter(int port) {
+        this.port = port;
     }
 
-    private static Injector createInjector() {
-        return Guice.createInjector(new TestModule());
+    public void start(String basePackage, Injector injector) throws Exception {
+        Objects.requireNonNull(basePackage);
+        Objects.requireNonNull(injector);
+        PrototypeServer prototypeServer = new PrototypeServer(port);
+
+        prototypeServer.setRestBasePackage(basePackage);
+        prototypeServer.setInjector(injector);
+
+        prototypeServer.run();
     }
 }

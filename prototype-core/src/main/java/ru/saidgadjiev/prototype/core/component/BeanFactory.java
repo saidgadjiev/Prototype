@@ -1,5 +1,6 @@
 package ru.saidgadjiev.prototype.core.component;
 
+import com.google.inject.Injector;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.multipart.InterfaceHttpData;
@@ -22,6 +23,12 @@ import java.util.Collection;
  */
 public class BeanFactory {
 
+    private final Injector injector;
+
+    public BeanFactory(Injector injector) {
+        this.injector = injector;
+    }
+
     public RestBean createRestBean(Class<?> beanClass) {
         try {
             return new RestBean(resolveRestMethods(beanClass, instantiate(beanClass)));
@@ -32,7 +39,11 @@ public class BeanFactory {
 
     private Object instantiate(Class<?> beanClass) {
         try {
-            return beanClass.newInstance();
+            if (injector != null) {
+                return injector.getInstance(beanClass);
+            } else {
+                return beanClass.newInstance();
+            }
         } catch (Exception ex) {
             throw new RuntimeException(ex);
         }
@@ -207,7 +218,7 @@ public class BeanFactory {
         public RestMethod.RequiredResult checkRequired(HttpRequestContext context) {
             String attr = context.getUriAttributesDecoder().getAttr(name);
 
-            if (attr != null && attr.isEmpty()) {
+            if (attr != null && !attr.isEmpty()) {
                 return new RestMethod.RequiredResult(HttpResponseStatus.OK);
             } else {
                 return new RestMethod.RequiredResult(HttpResponseStatus.BAD_REQUEST);

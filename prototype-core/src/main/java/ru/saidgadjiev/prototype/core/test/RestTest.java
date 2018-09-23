@@ -1,5 +1,6 @@
 package ru.saidgadjiev.prototype.core.test;
 
+import com.google.inject.Inject;
 import ru.saidgadjiev.prototype.core.annotation.*;
 import ru.saidgadjiev.prototype.core.http.FilePart;
 
@@ -8,6 +9,13 @@ import ru.saidgadjiev.prototype.core.http.FilePart;
  */
 @REST
 public class RestTest {
+
+    private Test test;
+
+    @Inject
+    public RestTest(Test test) {
+        this.test = test;
+    }
 
     @GET("/")
     public String hello(@RequestParam("name") String name) {
@@ -27,5 +35,10 @@ public class RestTest {
     @POST("/path/multipart")
     public String multipart(@MultipartFile("file") FilePart filePart) {
         return "";
+    }
+
+    @GET("/path/di/{name}")
+    public String di(@PathParam("name") String name) {
+        return test.hello(name);
     }
 }

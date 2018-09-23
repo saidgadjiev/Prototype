@@ -15,8 +15,9 @@ public class HttpResponseContext {
 
     private final GsonBuilder gsonBuilder;
 
-    public HttpResponseContext(GsonBuilder gsonBuilder) {
+    public HttpResponseContext(GsonBuilder gsonBuilder, HttpHeaders httpHeaders) {
         this.gsonBuilder = gsonBuilder;
+        this.httpHeaders = httpHeaders;
     }
 
     public String getContent() {

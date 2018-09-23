@@ -57,7 +57,7 @@ public class RequestHandler extends MessageToMessageDecoder<FullHttpRequest> {
                     } else {
                         sendResponse(ctx, request, requiredResult.getStatus(), null, null);
 
-                        break;
+                        return;
                     }
                 }
             } finally {
@@ -69,7 +69,7 @@ public class RequestHandler extends MessageToMessageDecoder<FullHttpRequest> {
             RestMethod.RestResult result = methodHandler.invoke(methodParams);
 
             if (isSuccessResult(result.getStatus())) {
-                HttpResponseContext responseContext = new HttpResponseContext(gsonBuilder);
+                HttpResponseContext responseContext = new HttpResponseContext(gsonBuilder, new DefaultHttpHeaders());
 
                 result.toResponse(responseContext);
 

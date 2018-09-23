@@ -1,6 +1,10 @@
 package ru.saidgadjiev.prototype.core.server;
 
 import com.google.gson.GsonBuilder;
+import com.google.inject.AbstractModule;
+import com.google.inject.Guice;
+import com.google.inject.Inject;
+import com.google.inject.Injector;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelInitializer;
@@ -17,6 +21,9 @@ import ru.saidgadjiev.prototype.core.component.BeanFactory;
 import ru.saidgadjiev.prototype.core.component.BeanProcessor;
 import ru.saidgadjiev.prototype.core.component.ComponentScan;
 
+import java.util.ArrayList;
+import java.util.Collection;
+
 /**
  * Created by said on 12.09.2018.
  */
@@ -26,6 +33,8 @@ public class PrototypeServer {
 
     private String restBasePackage;
 
+    private Injector injector;
+
     public PrototypeServer(int port) {
         this.port = port;
     }
@@ -34,12 +43,17 @@ public class PrototypeServer {
         this.restBasePackage = restBasePackage;
     }
 
+    public void setInjector(Injector injector) {
+        this.injector = injector;
+    }
+
     public void run() throws Exception {
         ComponentScan componentScan = new ComponentScan(restBasePackage);
 
-        BeanProcessor beanProcessor = new BeanProcessor(componentScan, new BeanFactory());
+        BeanProcessor beanProcessor = new BeanProcessor(componentScan, new BeanFactory(injector));
 
         DefaultEventExecutorGroup executorGroup = new DefaultEventExecutorGroup(10);
+
         GsonBuilder gsonBuilder = new GsonBuilder();
 
         EventLoopGroup bossGroup = new NioEventLoopGroup(); // (1)

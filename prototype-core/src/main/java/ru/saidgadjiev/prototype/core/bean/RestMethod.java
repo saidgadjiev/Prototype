@@ -1,11 +1,17 @@
-package ru.saidgadjiev.prototype.core.component;
+package ru.saidgadjiev.prototype.core.bean;
 
 import io.netty.handler.codec.http.*;
 import ru.saidgadjiev.prototype.core.annotation.ResponseBody;
+import ru.saidgadjiev.prototype.core.http.HttpRequestContext;
 import ru.saidgadjiev.prototype.core.http.HttpResponse;
+import ru.saidgadjiev.prototype.core.http.HttpResponseContext;
+import ru.saidgadjiev.prototype.core.security.execution.Execution;
+import ru.saidgadjiev.prototype.core.security.execution.ExecutionContext;
 
 import java.lang.reflect.Method;
 import java.util.Collection;
+import java.util.Collections;
+import java.util.Set;
 
 /**
  * Created by said on 14.09.2018.
@@ -24,13 +30,24 @@ public class RestMethod {
 
     private final boolean isResponseBody;
 
-    public RestMethod(Method restMethod, Object restClassInstance, HttpMethod method, String uri, Collection<RestParam> restParams) {
+    private Collection<Execution> preExecutions;
+
+    private Set<String> roles;
+
+    public RestMethod(Method restMethod,
+                      Object restClassInstance,
+                      HttpMethod method,
+                      String uri,
+                      Collection<RestParam> restParams,
+                      Collection<Execution> preExecutions) {
         this.restMethod = restMethod;
         this.restClassInstance = restClassInstance;
         this.uri = uri;
         this.method = method;
         this.restParams = restParams;
         isResponseBody = restMethod.isAnnotationPresent(ResponseBody.class);
+        this.preExecutions = preExecutions;
+        this.roles = roles;
     }
 
     public String getUri() {
@@ -39,6 +56,18 @@ public class RestMethod {
 
     public boolean probe(HttpMethod method) {
         return this.method == method;
+    }
+
+    public HttpResponseStatus checkPreExecutions(ExecutionContext executionContext) throws Exception {
+        for (Execution execution: preExecutions) {
+            HttpResponseStatus check = execution.check(executionContext);
+
+            if (check != HttpResponseStatus.OK) {
+                return check;
+            }
+        }
+
+        return HttpResponseStatus.OK;
     }
 
     public Collection<RestParam> getParams() {
@@ -66,6 +95,8 @@ public class RestMethod {
         }
 
         Object convert(HttpRequestContext requestContext);
+
+        String getName();
     }
 
     public static class RequiredResult {

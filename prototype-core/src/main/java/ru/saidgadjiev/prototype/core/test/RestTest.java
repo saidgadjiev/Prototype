@@ -3,6 +3,7 @@ package ru.saidgadjiev.prototype.core.test;
 import com.google.inject.Inject;
 import ru.saidgadjiev.prototype.core.annotation.*;
 import ru.saidgadjiev.prototype.core.http.FilePart;
+import ru.saidgadjiev.prototype.core.http.HttpSession;
 
 /**
  * Created by said on 14.09.2018.
@@ -18,8 +19,14 @@ public class RestTest {
     }
 
     @GET("/")
-    public String hello(@RequestParam("name") String name) {
-        return "Hello " + name;
+    @PreExecute(type = TestExpression.class, method = "test", args = "arg0")
+    @Role("ROLE_USER")
+    public String hello(@RequestParam("name") String name, HttpSession session) {
+        if (session.getAttribute("name") == null) {
+            session.setAttribute("name", "said");
+        }
+
+        return "Hello " + session.getAttribute("name");
     }
 
     @POST("/pojo")

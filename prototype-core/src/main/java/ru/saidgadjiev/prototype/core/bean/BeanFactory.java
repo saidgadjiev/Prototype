@@ -1,4 +1,4 @@
-package ru.saidgadjiev.prototype.core.component;
+package ru.saidgadjiev.prototype.core.bean;
 
 import com.google.inject.Injector;
 import io.netty.handler.codec.http.HttpMethod;
@@ -8,6 +8,12 @@ import io.netty.handler.codec.http.multipart.MemoryAttribute;
 import io.netty.handler.codec.http.multipart.MixedFileUpload;
 import ru.saidgadjiev.prototype.core.annotation.*;
 import ru.saidgadjiev.prototype.core.http.FilePart;
+import ru.saidgadjiev.prototype.core.http.HttpRequestContext;
+import ru.saidgadjiev.prototype.core.http.HttpSession;
+import ru.saidgadjiev.prototype.core.http.session.SessionManager;
+import ru.saidgadjiev.prototype.core.security.execution.Execution;
+import ru.saidgadjiev.prototype.core.security.execution.ExpressionExecutionImpl;
+import ru.saidgadjiev.prototype.core.security.execution.RoleExecutionImpl;
 
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -15,8 +21,7 @@ import java.io.InputStream;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
 import java.nio.charset.Charset;
-import java.util.ArrayList;
-import java.util.Collection;
+import java.util.*;
 
 /**
  * Created by said on 21.09.2018.
@@ -25,27 +30,26 @@ public class BeanFactory {
 
     private final Injector injector;
 
-    public BeanFactory(Injector injector) {
+    private SessionManager sessionManager;
+
+    public BeanFactory(Injector injector, SessionManager sessionManager) {
         this.injector = injector;
+        this.sessionManager = sessionManager;
     }
 
     public RestBean createRestBean(Class<?> beanClass) {
         try {
             return new RestBean(resolveRestMethods(beanClass, instantiate(beanClass)));
-        } catch (Exception ex) {
-            throw new RuntimeException(ex);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
         }
     }
 
-    private Object instantiate(Class<?> beanClass) {
-        try {
-            if (injector != null) {
-                return injector.getInstance(beanClass);
-            } else {
-                return beanClass.newInstance();
-            }
-        } catch (Exception ex) {
-            throw new RuntimeException(ex);
+    private Object instantiate(Class<?> beanClass) throws Exception {
+        if (injector != null) {
+            return injector.getInstance(beanClass);
+        } else {
+            return beanClass.newInstance();
         }
     }
 
@@ -54,13 +58,59 @@ public class BeanFactory {
 
         for (Method method : beanClass.getDeclaredMethods()) {
             if (method.isAnnotationPresent(GET.class) || method.isAnnotationPresent(POST.class)) {
-                restMethods.add(new RestMethod(method, beanInstance, getRestMethod(method), getMethodUri(method), getRestParams(method)));
+                restMethods.add(
+                        new RestMethod(
+                                method,
+                                beanInstance,
+                                getRestMethod(method),
+                                getMethodUri(method),
+                                getRestParams(method),
+                                getPreExecutions(method)
+                        )
+                );
             }
         }
 
         return restMethods;
     }
 
+    private Collection<Execution> getPreExecutions(Method restMethod) {
+        Collection<Execution> preExecutions = new ArrayList<>();
+
+        if (restMethod.isAnnotationPresent(Role.class)) {
+            Role role = restMethod.getAnnotation(Role.class);
+
+            preExecutions.add(new RoleExecutionImpl(new HashSet<>(Arrays.asList(role.value()))));
+        }
+        if (restMethod.isAnnotationPresent(PreExecute.class)) {
+            PreExecute preExecute = restMethod.getAnnotation(PreExecute.class);
+
+            Object preExecutionBean = injector.getInstance(preExecute.type());
+
+            try {
+                preExecutions.add(
+                        new ExpressionExecutionImpl(
+                                preExecutionBean,
+                                getPreExecutionMethod(preExecute.type(), preExecute.method(), preExecute.args()),
+                                preExecute.args())
+                );
+            } catch (NoSuchMethodException e) {
+                throw new RuntimeException(e);
+            }
+        }
+
+        return preExecutions;
+    }
+
+    private Method getPreExecutionMethod(Class<?> type, String methodName, String[] args) throws NoSuchMethodException {
+        for (Method method : type.getDeclaredMethods()) {
+            if (method.getName().equals(methodName)) {
+                return method;
+            }
+        }
+
+        throw new NoSuchMethodException(type.getName() + "." + methodName + "(" + Arrays.toString(args) + ")");
+    }
 
     private String getMethodUri(Method restMethod) {
         if (restMethod.isAnnotationPresent(GET.class)) {
@@ -92,36 +142,37 @@ public class BeanFactory {
         Collection<RestMethod.RestParam> restParams = new ArrayList<>();
 
         for (Parameter parameter : restMethod.getParameters()) {
-            if (parameter.isAnnotationPresent(RequestParam.class)) {
+            if (parameter.getType() == HttpSession.class) {
+                restParams.add(new HttpSessionParam(sessionManager, parameter.getName()));
+            } else if (parameter.isAnnotationPresent(RequestParam.class)) {
                 RequestParam requestParam = parameter.getAnnotation(RequestParam.class);
 
-                restParams.add(new RequestParamImpl(requestParam.value(), requestParam.required()));
+                restParams.add(new RequestParamImpl(requestParam.value(), requestParam.required(), parameter.getName()));
             } else if (parameter.isAnnotationPresent(RequestBody.class)) {
                 RequestBody requestBody = parameter.getAnnotation(RequestBody.class);
 
-                restParams.add(new RequestBodyImpl(parameter.getType(), requestBody.required()));
+                restParams.add(new RequestBodyImpl(parameter.getType(), requestBody.required(), parameter.getName()));
             } else if (parameter.isAnnotationPresent(PathParam.class)) {
                 PathParam requestParam = parameter.getAnnotation(PathParam.class);
 
-                restParams.add(new PathParamImpl(requestParam.value(), parameter.getType()));
+                restParams.add(new PathParamImpl(requestParam.value(), parameter.getType(), parameter.getName()));
             } else if (parameter.isAnnotationPresent(MultipartFile.class)) {
                 MultipartFile multipartFile = parameter.getAnnotation(MultipartFile.class);
 
-                restParams.add(new MultipartFileImpl(multipartFile.value(), multipartFile.required()));
+                restParams.add(new MultipartFileImpl(multipartFile.value(), multipartFile.required(), parameter.getName()));
             } else if (parameter.isAnnotationPresent(MultipartBody.class)) {
                 MultipartBody multipartBody = parameter.getAnnotation(MultipartBody.class);
 
-                restParams.add(new MultipartBodyImpl(multipartBody.value(), parameter.getType(), multipartBody.required()));
+                restParams.add(new MultipartBodyImpl(multipartBody.value(), parameter.getType(), multipartBody.required(), parameter.getName()));
             } else if (parameter.isAnnotationPresent(MultipartBody.class)) {
                 MultipartParam multipartParam = parameter.getAnnotation(MultipartParam.class);
 
-                restParams.add(new MultipartParamImpl(multipartParam.value(), parameter.getType(), multipartParam.required()));
+                restParams.add(new MultipartParamImpl(multipartParam.value(), parameter.getType(), multipartParam.required(), parameter.getName()));
             }
         }
 
         return restParams;
     }
-
 
     private static Object parsePathParam(String value, Class<?> type) {
         if (type == String.class) {
@@ -134,20 +185,37 @@ public class BeanFactory {
         return null;
     }
 
-    private static final class RequestParamImpl implements RestMethod.RestParam {
+    private static abstract class AbstractRequestParam implements RestMethod.RestParam {
+
+        private String name;
+
+        public AbstractRequestParam(String name) {
+            this.name = name;
+        }
+
+        @Override
+        public String getName() {
+            return name;
+        }
+    }
+
+    private static final class RequestParamImpl extends AbstractRequestParam {
 
         private final String name;
 
         private final boolean required;
 
-        private RequestParamImpl(String name, boolean required) {
+        private RequestParamImpl(String name, boolean required, String paramName) {
+            super(paramName);
             this.name = name;
             this.required = required;
         }
 
         @Override
         public Object convert(HttpRequestContext requestContext) {
-            return requestContext.getQueryStringDecoder().parameters().get(name);
+            List<String> params = requestContext.getQueryStringDecoder().parameters().get(name);
+
+            return params.isEmpty() ? null : params.iterator().next();
         }
 
         @Override
@@ -164,13 +232,14 @@ public class BeanFactory {
         }
     }
 
-    private static final class RequestBodyImpl implements RestMethod.RestParam {
+    private static final class RequestBodyImpl extends AbstractRequestParam {
 
         private final Class<?> type;
 
         private boolean required;
 
-        private RequestBodyImpl(Class<?> type, boolean required) {
+        private RequestBodyImpl(Class<?> type, boolean required, String paramName) {
+            super(paramName);
             this.type = type;
             this.required = required;
         }
@@ -198,13 +267,14 @@ public class BeanFactory {
         }
     }
 
-    private static final class PathParamImpl implements RestMethod.RestParam {
+    private static final class PathParamImpl extends AbstractRequestParam {
 
         private final Class<?> type;
 
         private final String name;
 
-        private PathParamImpl(String name, Class<?> type) {
+        private PathParamImpl(String name, Class<?> type, String paramName) {
+            super(paramName);
             this.type = type;
             this.name = name;
         }
@@ -226,13 +296,14 @@ public class BeanFactory {
         }
     }
 
-    private static class MultipartFileImpl implements RestMethod.RestParam {
+    private static class MultipartFileImpl extends AbstractRequestParam {
 
         private final String name;
 
         private boolean required;
 
-        private MultipartFileImpl(String name, boolean required) {
+        private MultipartFileImpl(String name, boolean required, String paramName) {
+            super(paramName);
             this.name = name;
             this.required = required;
         }
@@ -270,9 +341,10 @@ public class BeanFactory {
                 return new RestMethod.RequiredResult(HttpResponseStatus.OK);
             }
         }
+
     }
 
-    private static class MultipartBodyImpl implements RestMethod.RestParam {
+    private static class MultipartBodyImpl extends AbstractRequestParam {
 
         private final String name;
 
@@ -280,7 +352,8 @@ public class BeanFactory {
 
         private boolean required;
 
-        private MultipartBodyImpl(String name, Class<?> type, boolean required) {
+        private MultipartBodyImpl(String name, Class<?> type, boolean required, String paramName) {
+            super(paramName);
             this.name = name;
             this.type = type;
             this.required = required;
@@ -311,7 +384,7 @@ public class BeanFactory {
         }
     }
 
-    private static class MultipartParamImpl implements RestMethod.RestParam {
+    private static class MultipartParamImpl extends AbstractRequestParam {
 
         private final String name;
 
@@ -319,7 +392,8 @@ public class BeanFactory {
 
         private boolean required;
 
-        private MultipartParamImpl(String name, Class<?> type, boolean required) {
+        private MultipartParamImpl(String name, Class<?> type, boolean required, String paramName) {
+            super(paramName);
             this.name = name;
             this.type = type;
             this.required = required;
@@ -350,4 +424,18 @@ public class BeanFactory {
         }
     }
 
+    private class HttpSessionParam extends AbstractRequestParam {
+
+        private SessionManager sessionManager;
+
+        public HttpSessionParam(SessionManager sessionManager, String name) {
+            super(name);
+            this.sessionManager = sessionManager;
+        }
+
+        @Override
+        public Object convert(HttpRequestContext requestContext) {
+            return sessionManager.getSession(requestContext.getRequest(), true);
+        }
+    }
 }

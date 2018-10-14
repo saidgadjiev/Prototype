@@ -1,4 +1,4 @@
-package ru.saidgadjiev.prototype.core.component;
+package ru.saidgadjiev.prototype.core.http;
 
 import com.google.gson.GsonBuilder;
 import io.netty.handler.codec.http.FullHttpRequest;

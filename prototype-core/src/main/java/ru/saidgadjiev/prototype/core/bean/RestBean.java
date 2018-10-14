@@ -1,9 +1,5 @@
-package ru.saidgadjiev.prototype.core.component;
+package ru.saidgadjiev.prototype.core.bean;
 
-import ru.saidgadjiev.prototype.core.annotation.GET;
-import ru.saidgadjiev.prototype.core.annotation.POST;
-
-import java.lang.reflect.Method;
 import java.util.*;
 
 /**

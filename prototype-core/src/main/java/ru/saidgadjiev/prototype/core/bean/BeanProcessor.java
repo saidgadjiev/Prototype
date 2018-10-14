@@ -1,4 +1,4 @@
-package ru.saidgadjiev.prototype.core.component;
+package ru.saidgadjiev.prototype.core.bean;
 
 import java.util.Collection;
 import java.util.Set;
